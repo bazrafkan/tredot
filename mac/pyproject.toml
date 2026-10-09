@@ -1,0 +1,16 @@
+[project]
+name = "tredot"
+version = "1.0.0"
+description = "Tredot on the Mac: the bridge to the module, agent hooks, MCP server, voice notes, agent"
+requires-python = ">=3.12"
+dependencies = [
+    "pyserial>=3.5",
+    "claude-agent-sdk>=0.2.164",
+    "bleak>=3.0.2",
+    "cryptography>=50.0.2",
+    "zeroconf>=0.151.5",
+    "numpy>=2.5.3",
+]
+
+[tool.uv]
+package = false  # scripts, not an installable library

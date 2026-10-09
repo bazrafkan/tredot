@@ -1,0 +1,8 @@
+# Two 3.94 MB app slots for over-the-air updates: with Wi-Fi and Bluetooth the firmware is about
+# 3.5 MB. No SPIFFS: the firmware uses no files. Arduino picks this file up automatically.
+# Name,   Type, SubType, Offset,   Size,     Flags
+nvs,      data, nvs,     0x9000,   0x5000,
+otadata,  data, ota,     0xe000,   0x2000,
+app0,     app,  ota_0,   0x10000,  0x3F0000,
+app1,     app,  ota_1,   0x400000, 0x3F0000,
+coredump, data, coredump,0x7F0000, 0x10000,

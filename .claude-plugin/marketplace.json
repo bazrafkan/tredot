@@ -1,0 +1,15 @@
+{
+  "name": "tredot",
+  "owner": {
+    "name": "tredot"
+  },
+  "description": "Tredot: approve your agent's actions with a tap.",
+  "plugins": [
+    {
+      "name": "tredot",
+      "source": "./plugin",
+      "version": "1.0.0",
+      "description": "Tredot for Claude Code: see what Claude is doing on a small round screen, approve its actions with a tap, answer by voice, show it photos."
+    }
+  ]
+}

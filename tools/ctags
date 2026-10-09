@@ -1,0 +1,3 @@
+#!/bin/sh
+# Empty ctags: the firmware declares its functions in order, so Arduino needs no generated prototypes.
+exit 0

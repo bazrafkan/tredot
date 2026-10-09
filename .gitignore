@@ -1,0 +1,19 @@
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+mac/.venv/
+
+# Arduino/ESP32 builds, the app, Whisper and Sparkle
+build/
+firmware/tredot/build/
+
+# Whisper models (large)
+models/
+
+# Data generated at runtime (voice notes, photos, videos)
+note/
+media/

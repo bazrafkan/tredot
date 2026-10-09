@@ -1,0 +1,6 @@
+/* Info.plist texts shown by macOS (permission prompts, app name) */
+
+"CFBundleDisplayName" = "Tredot";
+"NSBluetoothAlwaysUsageDescription" = "To talk to the Tredot module without a cable, over Bluetooth.";
+"NSLocalNetworkUsageDescription" = "To talk to the Tredot module over your home or office Wi-Fi network.";
+"NSSpeechRecognitionUsageDescription" = "To transcribe the module's voice notes on this Mac until the Whisper model is downloaded.";

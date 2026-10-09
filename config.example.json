@@ -1,0 +1,18 @@
+{
+  "notes_dir": "~/Documents/Tredot/notes",
+  "media_dir": "~/Documents/Tredot/media",
+  "cache_dir": "~/.cache/tredot",
+  "whisper_model": "~/Library/Application Support/Tredot/ggml-large-v3-turbo-q5_0.bin",
+  "language": "auto",
+  "ui_language": "auto",
+  "vocabulary": "Claude, Claude Code, Tredot.",
+  "ask_timeout": 60,
+  "link": "auto",
+  "tools": {"whisper-cli": null, "claude": null},
+  "agent": {
+    "model": "claude-sonnet-5-5",
+    "cwd": null,
+    "add_dirs": [],
+    "prompt": ""
+  }
+}
