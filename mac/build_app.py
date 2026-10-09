@@ -151,10 +151,13 @@ def python(resources):
     subprocess.run(["uv", "python", "install", PYTHON_VERSION], check=True, capture_output=True)
     found = subprocess.run(["uv", "python", "find", "--managed-python", PYTHON_VERSION],
                            check=True, capture_output=True, text=True).stdout.strip()
-    prefix = subprocess.run([found, "-c", "import sys; print(sys.prefix)"],
+    # base_prefix, not prefix: inside the project uv may find the project's virtual environment,
+    # whose bin/python is only a link to the installation on this Mac
+    prefix = subprocess.run([found, "-c", "import sys; print(sys.base_prefix)"],
                             check=True, capture_output=True, text=True).stdout.strip()
     home = os.path.join(resources, "python")
     shutil.copytree(prefix, home, symlinks=True, ignore=shutil.ignore_patterns("__pycache__"))
+    self_contained(home)
     for pattern in PRUNE:
         for path in glob.glob(os.path.join(home, pattern)):
             shutil.rmtree(path) if os.path.isdir(path) and not os.path.islink(path) else os.remove(path)
@@ -173,6 +176,18 @@ def python(resources):
         if not os.path.basename(path).startswith("python"):
             os.remove(path)
     return exe
+
+
+def self_contained(folder):
+    """Stop the build if a link inside the bundled Python points outside it: the app would work on
+    this Mac and fail on every other one."""
+    for root, dirs, files in os.walk(folder):
+        for name in dirs + files:
+            path = os.path.join(root, name)
+            if os.path.islink(path):
+                target = os.path.realpath(path)
+                if not target.startswith(os.path.realpath(folder) + os.sep):
+                    raise RuntimeError(f"{path} points outside the app: {target}")
 
 
 def icon(resources):
