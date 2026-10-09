@@ -295,6 +295,19 @@ class BridgeTest(unittest.TestCase):
         self.assertTrue(box[0]["path"].endswith(".jpg"))
         self.assertTrue(base64.b64decode(box[0]["image"]).startswith(b"\xff\xd8"))  # JPEG for the agent
 
+    def test_screenshot(self):
+        # the module sends its screen as RGB565; the bridge saves a round PNG, doubled in size
+        thread, box = self.call_async({"op": "screenshot"}, wait=30)
+        self.assertEqual(self.module.expect("SS"), ["SS"])
+        red = (0b11111 << 11).to_bytes(2, "little") * (240 * 240)
+        self.module.send("SS", "240", "240", base64.b64encode(red).decode())
+        thread.join(15)
+        path = box[0]["path"]
+        self.assertTrue(path.endswith(".png"))
+        size = subprocess.run(["sips", "-g", "pixelWidth", "-g", "pixelHeight", path],
+                              capture_output=True, text=True, check=True).stdout.split()
+        self.assertEqual(size[-3:], ["480", "pixelHeight:", "480"])
+
     def test_busy_module_says_no(self):
         thread, box = self.call_async({"op": "listen", "prompt": "tell me"})
         self.module.expect("X")

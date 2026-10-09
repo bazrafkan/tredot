@@ -334,6 +334,7 @@ final class TredotApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
         check.target = updater
         menu.addItem(check)
         menu.addItem(.separator())
+        add(menu, L("Take a Screenshot of the Module"), #selector(takeScreenshot))
         add(menu, L("Open Notes"), #selector(openNotes))
         add(menu, L("Open Logs"), #selector(openLogs))
         menu.addItem(.separator())
@@ -642,6 +643,20 @@ final class TredotApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc func connectGemini() { connect("gemini", L("Connecting Gemini CLI…"), L("Gemini CLI connected")) }
 
     @objc func retryVoice() { voice.start() }
+
+    /// What the module's screen shows, as a PNG in the media folder, opened right away
+    @objc func takeScreenshot() {
+        DispatchQueue.global().async {
+            let reply = call(["op": "screenshot"], timeout: 30) ?? [:]
+            DispatchQueue.main.async {
+                if let path = reply["path"] as? String {
+                    NSWorkspace.shared.open(URL(fileURLWithPath: path))
+                } else {
+                    alert(L("No screenshot"), reply["error"] as? String ?? L("the bridge is not responding"))
+                }
+            }
+        }
+    }
 
     @objc func openNotes() { NSWorkspace.shared.open(URL(fileURLWithPath: notesDir)) }
     @objc func openLogs() { NSWorkspace.shared.open(URL(fileURLWithPath: cacheDir)) }

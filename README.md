@@ -17,6 +17,15 @@ one-time pairing.
 - **Works with** Claude Code (plugin with hooks and MCP tools), Claude Desktop (extension) and
   Gemini CLI (MCP tools and status hooks). Other MCP clients should work but are untested.
 
+| | | |
+|:---:|:---:|:---:|
+| ![Ready](docs/images/ready.png) | ![Thinking](docs/images/thinking.png) | ![Running a tool](docs/images/tool.png) |
+| Ready | Thinking | Running a tool |
+| ![Approve with a tap](docs/images/approve.png) | ![Waiting for Gemini CLI](docs/images/gemini.png) | ![Done](docs/images/done.png) |
+| Approve with a tap | Gemini CLI asks in its terminal | Done |
+
+*Real screenshots of the module's screen (menu-bar app → **Take a Screenshot of the Module**).*
+
 How it works: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Releasing:
 [docs/RELEASING.md](docs/RELEASING.md). What's next: [docs/ROADMAP.md](docs/ROADMAP.md).
 
@@ -126,7 +135,8 @@ recent event.
 - **Video:** tap to stop (10 minutes at most). Not available over Bluetooth.
 
 Notes, photos and videos go to folders under `~/Documents/Tredot/`. **Open Notes** in the menu
-takes you to the notes. To use other folders, see [Configuration](#configuration).
+takes you to the notes. **Take a Screenshot of the Module** saves what the screen shows as a round
+PNG in the media folder and opens it. To use other folders, see [Configuration](#configuration).
 
 **Talk to Claude** goes to a built-in agent (Claude Agent SDK, signed in with your Claude Code login).
 It can use the module's tools and keeps one conversation per day, with a diary in the notes folder.

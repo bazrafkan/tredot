@@ -204,6 +204,7 @@ by `0x1F`. The Mac does all text layout.
 | `u <base64>` | one 3 kB firmware chunk |
 | `UE` | end of firmware. The module verifies it and asks for confirmation |
 | `UA` | abort the update |
+| `SS` | screenshot: send what the screen shows now |
 
 **Module to Mac**
 
@@ -215,6 +216,7 @@ by `0x1F`. The Mac does all text layout.
 | `I wifi <state>` | `off`, `connecting`, `address`, `<IP>` or `error: <reason>` |
 | `R <id> <index>` | confirmed option (0 is the first). `-1` means it was never shown, so the agent's own dialog decides |
 | `T <x> <y>` | raw touch, for diagnostics |
+| `SS <width> <height> <base64>` | screenshot: RGB565 pixels, little-endian, row by row. The firmware keeps a copy of everything sent to the panel by wrapping the SPI bus and following the panel's address window (`mirror.h`); the bridge saves a round PNG (`screenshot.py`) |
 | `VB [agent]` | recording starts. `agent` means Talk to Claude, otherwise it is a voice note |
 | `V <base64>` | PCM audio: 16 kHz, 16-bit, mono |
 | `VA <base64>` | IMA ADPCM audio, sent instead of `V` over BLE |

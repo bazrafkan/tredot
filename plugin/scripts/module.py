@@ -65,6 +65,11 @@ def photo(instruction):
     return (reply["path"], reply["image"]) if reply.get("path") and reply.get("image") else None
 
 
+def screenshot():
+    """What the module's screen shows now, saved as a PNG -> {"path": ...} or {"error": ...}."""
+    return call({"op": "screenshot"}, wait=30)
+
+
 def status():
     """The module's status as the bridge knows it (from the module's H greeting and I lines)."""
     return call({"op": "status"})

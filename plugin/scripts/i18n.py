@@ -60,6 +60,7 @@ IT = {
     "the module is not paired or not connected": "il modulo non è abbinato o non è collegato",
     "needs the USB cable": "serve il cavo USB",
     "no answer from the module": "nessuna risposta dal modulo",
+    "the module is not connected": "il modulo non è collegato",
     "refused on the module": "rifiutato sul modulo",
     "not over Bluetooth (too slow): connect it to Wi-Fi or with the cable":
         "via Bluetooth no (troppo lento): collegalo al Wi-Fi o col cavo",

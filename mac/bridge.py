@@ -37,6 +37,7 @@ from datetime import datetime
 
 import adpcm
 import links
+import screenshot
 import security
 from config import CACHE, MEDIA, NOTES, SOCKET
 from hook import plain, wrap
@@ -375,6 +376,8 @@ class Device:
             self.add_frame(int(parts[1]), b64decode(parts[2]))
         elif parts[0] == "P" and len(parts) >= 2:
             self.save_photo(b64decode(parts[1]))
+        elif parts[0] == "SS" and len(parts) >= 4:
+            self.resolve("screenshot", (int(parts[1]), int(parts[2]), b64decode(parts[3])))
         elif parts[0] == "MB":
             self.start_video()
         elif parts[0] == "ME":
@@ -857,6 +860,18 @@ class Handler(socketserver.StreamRequestHandler):
                 self.reply({"path": path, "text": hear(path) if path else None})
             else:
                 self.reply({"path": path, "image": small_photo(path) if path else None})
+        elif msg.get("op") == "screenshot":
+            if not device.connected:
+                self.reply({"path": None, "error": t("the module is not connected")})
+                return
+            shot = device.request("screenshot", "SS", 20)
+            if not shot:
+                self.reply({"path": None, "error": t("no answer from the module")})
+                return
+            width, height, raw = shot
+            path = screenshot.save(raw, width, height, MEDIA)
+            logging.info("screenshot %s", path)
+            self.reply({"path": path})
         elif msg.get("op") == "status":
             link = device.link
             self.reply({"connected": device.connected, "link": link and link.name,

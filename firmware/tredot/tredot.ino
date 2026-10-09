@@ -21,6 +21,7 @@
 //     UNPAIR                  remove the pairing (encrypted only); the module also forgets Wi-Fi
 //     N <ssid> <password>     Wi-Fi network (both base64; empty = forget), encrypted only
 //     U / u / UE / UA         firmware update, encrypted only and not over Bluetooth (ota.h)
+//     SS                      screenshot: what the screen shows right now (mirror.h)
 //   module -> Mac
 //     H <protocol> <firmware> <mic> <id> <session>   greeting, always plaintext. session: the
 //                             module nonce (paired), "-" (not paired: plaintext, USB only),
@@ -38,13 +39,14 @@
 //     MB / F <ms> <base64> / V <base64> / ME   video: start, JPEG frame with timestamp, audio
 //                             (as above), end
 //     T <x> <y>               raw touch, for diagnostics
+//     SS <width> <height> <base64>   screenshot: RGB565 pixels, little-endian, row by row
 //
 // Every link (USB serial, Bluetooth LE, Wi-Fi TCP) is a Stream; see links.h.
 
 // The Mac checks PROTOCOL in the H greeting: bump it on any change to lines or fields that an
 // older bridge would not understand. FIRMWARE changes with every release.
 #define PROTOCOL 6
-#define FIRMWARE "1.0.0"
+#define FIRMWARE "1.1.0"
 
 #define U8G2_USE_LARGE_FONTS
 #include <U8g2lib.h>  // without it, Arduino_GFX does not enable the Unifont fonts
@@ -56,6 +58,7 @@
 #include "img_converters.h"
 #include <JPEGDEC.h>  // bitbank2, Apache 2.0: JPEG decoding with the S3 SIMD instructions
 #include "texts.h"
+#include "mirror.h"
 #include "links.h"
 #include "ble.h"
 #include "adpcm.h"
@@ -100,7 +103,7 @@ const int CAM_D[8] = {15, 17, 18, 16, 14, 12, 11, 48};  // Y2..Y9
 #define C_GREEN  0x4DCC  // #4EBA65
 #define C_RED    0xE289  // #E5534B
 
-Arduino_DataBus *bus = new Arduino_ESP32SPI(TFT_DC, TFT_CS, TFT_SCK, TFT_MOSI, TFT_MISO);
+MirrorBus *bus = new MirrorBus(TFT_DC, TFT_CS, TFT_SCK, TFT_MOSI, TFT_MISO);  // keeps a copy: SS
 Arduino_GFX *gfx = new Arduino_GC9A01(bus, GFX_NOT_DEFINED, 0, true);
 
 
@@ -161,6 +164,7 @@ int optionAt(int y, int n);
 void startRecording(bool agent);
 void startCamera(Mode m);
 void pill(const String &text, int top, uint16_t color);
+void sendScreenshot();
 void showUpdate(const String &first, const String &second);
 
 // ---------- UTF-8 text ----------
@@ -590,6 +594,8 @@ void handleLine(const String &line) {
     if (f[1] == "photo") startCamera(M_PHOTO);
     else if (f[1] == "listen") startRecording(true);
     else sendLine("XN");
+  } else if (f[0] == "SS") {
+    sendScreenshot();
   } else if (f[0] == "L" && n >= 2) {
     if (mode != M_THINK) return;  // the text only matters while the agent is writing
     nLines = splitList(f[1], lines, 4);
@@ -1086,19 +1092,28 @@ void showJpeg(const uint8_t *jpeg, size_t len) {
 }
 
 // Sends a JPEG as base64 in pieces, without keeping an encoded copy in memory
-void sendJpeg(const String &head, camera_fb_t *fb) {
+// One line made of a head and binary data in base64, sent in pieces: no encoded copy in memory
+void sendBase64(const String &head, const uint8_t *data, size_t len) {
   SendGuard guard;
-  if (sec.active) sec.begin(channel, head.length() + 4 * ((fb->len + 2) / 3));  // base64 length
+  if (sec.active) sec.begin(channel, head.length() + 4 * ((len + 2) / 3));  // base64 length
   if (sec.active) sec.part(channel, head);
   else channel->print(head);
-  for (size_t off = 0; off < fb->len; off += 3072) {  // multiple of 3: independent base64 pieces
-    size_t n = min((size_t)3072, fb->len - off);
-    String chunk = base64::encode(fb->buf + off, n);
+  for (size_t off = 0; off < len; off += 3072) {  // multiple of 3: independent base64 pieces
+    size_t n = min((size_t)3072, len - off);
+    String chunk = base64::encode(data + off, n);
     if (sec.active) sec.part(channel, chunk);
     else channel->print(chunk);
   }
   if (sec.active) sec.end(channel);
   else channel->print('\n');
+}
+
+void sendJpeg(const String &head, camera_fb_t *fb) { sendBase64(head, fb->buf, fb->len); }
+
+void sendScreenshot() {
+  if (!bus->pixels) return;
+  sendBase64(String("SS\t") + MirrorBus::W + "\t" + MirrorBus::H + "\t", (const uint8_t *)bus->pixels,
+             MirrorBus::W * MirrorBus::H * sizeof(uint16_t));
 }
 
 void pill(const String &text, int top, uint16_t color) {
@@ -1326,6 +1341,7 @@ void setup() {
   pinMode(TFT_BL, OUTPUT);
   pinMode(TOUCH_INT, INPUT_PULLUP);
   Wire.begin();
+  bus->allocate();  // before the first pixel, so the screenshot copy is complete
   gfx->begin(80000000);  // 80 MHz: a viewfinder frame took ~39 ms to draw at 40 MHz
   gfx->setFont(u8g2_font_unifont_h_utf8);
   gfx->setUTF8Print(true);
