@@ -1,6 +1,6 @@
 [project]
 name = "tredot"
-version = "1.1.0"
+version = "1.2.0"
 description = "Tredot on the Mac: the bridge to the module, agent hooks, MCP server, voice notes, agent"
 requires-python = ">=3.12"
 dependencies = [
