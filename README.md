@@ -36,6 +36,12 @@ How it works: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Releasing:
 - The **U.FL antenna** that comes with the XIAO, attached. Wi-Fi and Bluetooth are unusable without it.
 - A USB-C cable (for power, pairing and the first firmware flash)
 
+- On the back of the Round Display (version 1.1 or later), the small **2-position switch** marked
+  "ON KE": **switch 2 must be on** the ON side. It connects the XIAO's D6 pin to the screen's
+  backlight. With it off the backlight is always lit and the screen can't turn off. In our module
+  switch 2 is on the ON side. Switch 1 (battery reading) can stay as it is. Don't confuse it with
+  the larger OFF/ON power slider.
+
 The module uses 2.4 GHz Wi-Fi only. A network that has 2.4 and 5 GHz under the same name works.
 
 "XIAO" is a trademark of Seeed Technology, "Claude" of Anthropic and "Gemini" of Google. Tredot is
@@ -118,6 +124,12 @@ writes the marketplace folder. Use full paths instead of `~`.
 | Orange dots blinking, "Reply in Claude" | the agent is waiting for you at the computer ("Reply in Gemini" for Gemini CLI) |
 | Green dots, "Done", start of the reply | the turn is finished. Tap to dismiss. |
 | Red dots | an error, such as a Claude API error or a voice note that failed |
+| Screen completely dark | asleep (see below) |
+
+**Sleep.** After 30 seconds with no news from the agent and no touch, the screen and its backlight
+turn off. They turn on again with the next message from the agent (thinking, a tool, done, a request)
+or with a touch. That first touch only wakes the screen: it doesn't tap anything. The screen never
+sleeps while a request waits for your answer, while recording or with the camera on.
 
 **Approving.** When Claude Code asks for permission, the module shows the tool and the exact action,
 with choices such as **Yes**, **Yes, always: …**, **No** and **In Claude**. Tap a choice once to

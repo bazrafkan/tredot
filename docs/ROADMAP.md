@@ -60,6 +60,7 @@ the agent are secondary until real use shows they matter. Four principles guide 
 **Module**
 
 - [ ] Smoother video: binary frames instead of base64, and capture in a separate task.
+- [x] The screen and backlight turn off after 30 seconds of inactivity (firmware 1.2.0).
 - [ ] Larger touch targets for lists.
 - [ ] Battery: check that a LiPo on the Round Display charges over USB and that the firmware can
   read its level.

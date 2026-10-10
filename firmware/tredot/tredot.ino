@@ -46,7 +46,7 @@
 // The Mac checks PROTOCOL in the H greeting: bump it on any change to lines or fields that an
 // older bridge would not understand. FIRMWARE changes with every release.
 #define PROTOCOL 6
-#define FIRMWARE "1.1.0"
+#define FIRMWARE "1.2.0"
 
 #define U8G2_USE_LARGE_FONTS
 #include <U8g2lib.h>  // without it, Arduino_GFX does not enable the Unifont fonts
@@ -233,7 +233,35 @@ int splitList(const String &field, String out[], int max) {
 
 // ---------- drawing ----------
 
-void backlight(uint8_t level) { analogWrite(TFT_BL, level); }
+// The screen goes dark after SLEEP_MS without news or touch, and lights up with the next message
+// from the agent or the next touch. Never while it waits for an answer, records or shows the camera.
+#define SLEEP_MS 30000UL
+bool asleep = false;
+uint32_t lastActivity = 0;
+uint8_t backlightLevel = 255;
+
+void backlight(uint8_t level) {
+  backlightLevel = level;
+  if (!asleep) analogWrite(TFT_BL, level);
+}
+
+void wake() {
+  lastActivity = millis();
+  if (asleep) {
+    asleep = false;
+    gfx->displayOn();
+    analogWrite(TFT_BL, backlightLevel);
+  }
+}
+
+void sleepIfIdle() {
+  if (asleep || ota.running || millis() - lastActivity < SLEEP_MS) return;
+  if (mode == M_ASK || mode == M_REC || mode == M_PHOTO || mode == M_VIDEO) return;
+  asleep = true;
+  gfx->displayOff();
+  pinMode(TFT_BL, OUTPUT);  // releases the PWM channel: the pin is driven low
+  digitalWrite(TFT_BL, LOW);
+}
 
 // ---------- the three dots (Tredot) ----------
 // In an arc as in the app icon. While the agent thinks each one wanders on its own (Lissajous
@@ -390,7 +418,7 @@ void render() {
   dotsShown = false;
   switch (mode) {
     case M_IDLE:
-      backlight(40);
+      backlight(255);
       dots(D_LOGO, 96);
       drawLine(tr(T_READY), 116, LINE_H, C_DIM);
       break;
@@ -482,6 +510,7 @@ void render() {
   }
   drawMenuRow();
   modeSince = millis();
+  wake();
 }
 
 // Ring that shrinks as the time to answer runs out
@@ -543,6 +572,7 @@ void handleLine(const String &line) {
     if (f[0] == "A" && n >= 2) sendLine("R\t" + f[1] + "\t-1");
     return;
   }
+  if (f[0] == "S" || f[0] == "A" || f[0] == "M" || f[0] == "L") wake();  // news from the agent
   if (f[0] == "S" && n >= 2) {
     if (mode == M_ASK) return;  // the request stays until answered or closed with C
     String s = f[1];
@@ -700,6 +730,7 @@ void endPairing(bool yes) {
 }
 
 void showUpdate(const String &first, const String &second) {
+  wake();
   mode = M_NOTE;
   title = tr(T_FIRMWARE_UPDATE);
   nLines = 2;
@@ -1315,9 +1346,17 @@ void pollTouch() {
   int x, y;
   bool now = readTouch(x, y);
   bool fresh = now && millis() - lastSeen > 150;
-  if (now) lastSeen = millis();
+  if (now) {
+    lastSeen = millis();
+    if (!asleep) lastActivity = millis();  // a finger resting on the screen keeps it awake
+  }
   if (!fresh) return;
   sendLine("T\t" + String(x) + "\t" + String(y));
+  if (asleep) {  // the first touch only lights the screen: it must not tap something unseen
+    wake();
+    return;
+  }
+  lastActivity = millis();
   if (mode == M_ASK && millis() - modeSince > 300) onAskTap(y);
   else if (mode == M_REC && millis() - modeSince > 500) stopRecording();
   else if (mode == M_MENU && millis() - modeSince > 300) onMenuTap(y);
@@ -1413,10 +1452,11 @@ void loop() {
   static uint32_t lastTick = 0;
   if (millis() - lastTick >= 120) {
     lastTick = millis();
+    sleepIfIdle();
     if (mode == M_THINK || mode == M_TOOL) drawElapsed();
     if (mode == M_ASK) drawCountdown();
     if (mode == M_REC) drawRecTime();
-    // after 5 minutes with no news, "Done" goes back to idle and dims the backlight
+    // after 5 minutes with no news, "Done" goes back to idle
     if ((mode == M_DONE || mode == M_SAVED) && millis() - modeSince > 300000UL) {
       mode = M_IDLE;
       render();
