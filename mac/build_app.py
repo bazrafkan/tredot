@@ -244,6 +244,7 @@ def build(app=TARGET):
     for source in glob.glob(os.path.join(HERE, "*.py")):
         if os.path.basename(source) != "build_app.py":
             shutil.copy2(source, bridge)
+    shutil.copytree(os.path.join(HERE, "vendor"), os.path.join(bridge, "vendor"))  # force-graph (MIT)
     with open(os.path.join(bridge, "VERSION"), "w") as f:  # bridge.VERSION
         f.write(VERSION + "\n")
     version = firmware(resources)

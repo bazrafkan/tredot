@@ -147,7 +147,9 @@ recent event.
 - **Video:** tap to stop (10 minutes at most). Not available over Bluetooth.
 
 Notes, photos and videos go to folders under `~/Documents/Tredot/`. **Open Notes** in the menu
-takes you to the notes. **Take a Screenshot of the Module** saves what the screen shows as a round
+takes you to the notes. **Open Knowledge Graph** opens a page that draws your notes and the
+people, projects and topics they mention (Claude lists them in each new note; the first time it also
+does it for the old ones); two notes that share one are linked. It updates after every note. **Take a Screenshot of the Module** saves what the screen shows as a round
 PNG in the media folder and opens it. To use other folders, see [Configuration](#configuration).
 
 **Talk to Claude** goes to a built-in agent (Claude Agent SDK, signed in with your Claude Code login).

@@ -14,6 +14,7 @@
 import AppKit
 import CryptoKit
 import Sparkle
+import WebKit
 
 // ---------- paths: inside the app, and the folders from config.py ----------
 
@@ -59,9 +60,9 @@ func configValue(_ key: String, _ fallback: String) -> String {
     return p.terminationStatus == 0 && !value.isEmpty ? value : fallback
 }
 
-/// integrations.py <action>: the last line of its output is the JSON reply
-func integrationsCall(_ action: String) -> [String: Any] {
-    let p = pythonProcess("integrations.py", [action])
+/// integrations.py <action> (or knowledge.py): the last line of its output is the JSON reply
+func integrationsCall(_ action: String, script: String = "integrations.py") -> [String: Any] {
+    let p = pythonProcess(script, [action])
     let pipe = Pipe()
     p.standardOutput = pipe
     p.standardError = FileHandle.nullDevice
@@ -70,7 +71,42 @@ func integrationsCall(_ action: String) -> [String: Any] {
     p.waitUntilExit()
     let last = out.split(separator: "\n").last.map(String.init) ?? ""
     return (try? JSONSerialization.jsonObject(with: Data(last.utf8))) as? [String: Any]
-        ?? ["error": L("integrations.py did not respond")]
+        ?? ["error": String(format: L("%@ did not respond"), script)]
+}
+
+/// The knowledge graph's page (knowledge.py) in a window of the app, not in the browser. A click on
+/// a note opens its file; the page itself stays where it is.
+final class GraphWindow: NSObject, WKNavigationDelegate {
+    var window: NSWindow?
+    let web = WKWebView(frame: .zero)
+
+    func show(_ page: String) {
+        if window == nil {
+            let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 960, height: 680),
+                             styleMask: [.titled, .closable, .miniaturizable, .resizable],
+                             backing: .buffered, defer: false)
+            w.title = L("Knowledge graph")
+            w.isReleasedWhenClosed = false
+            w.contentView = web
+            w.center()
+            web.navigationDelegate = self
+            window = w
+        }
+        let url = URL(fileURLWithPath: page)
+        web.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent())
+        NSApp.activate(ignoringOtherApps: true)
+        window?.makeKeyAndOrderFront(nil)
+    }
+
+    func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
+                 decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+        if action.navigationType == .linkActivated, let url = action.request.url {
+            NSWorkspace.shared.open(url)
+            decisionHandler(.cancel)
+        } else {
+            decisionHandler(.allow)
+        }
+    }
 }
 
 let home = NSHomeDirectory()
@@ -297,6 +333,7 @@ final class TredotApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var unpairItem = NSMenuItem(), loginItem = NSMenuItem(), voiceItem = NSMenuItem()
     var codeItem = NSMenuItem(), desktopItem = NSMenuItem(), geminiItem = NSMenuItem()
     var agents: [String: Any] = [:]  // integrations.py status
+    let graphWindow = GraphWindow()
     var spin: CGFloat = 0  // the arc's angle during an action
     let voice = Voice()
     // Sparkle: checks once a day on its own, and when asked from the menu (Info.plist: SUFeedURL)
@@ -336,6 +373,8 @@ final class TredotApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(.separator())
         add(menu, L("Take a Screenshot of the Module"), #selector(takeScreenshot))
         add(menu, L("Open Notes"), #selector(openNotes))
+        add(menu, L("Open Knowledge Graph"), #selector(openGraph))
+        add(menu, L("Show Graph on the Module"), #selector(graphOnModule))
         add(menu, L("Open Logs"), #selector(openLogs))
         menu.addItem(.separator())
         add(menu, L("Quit"), #selector(quit))
@@ -516,7 +555,7 @@ final class TredotApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
             DispatchQueue.main.async {
                 self.busy = nil
                 self.refresh()
-                alert(title, text)
+                if !title.isEmpty { alert(title, text) }  // no title: nothing to tell
             }
         }
     }
@@ -655,6 +694,25 @@ final class TredotApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     alert(L("No screenshot"), reply["error"] as? String ?? L("the bridge is not responding"))
                 }
             }
+        }
+    }
+
+    /// The notes' knowledge graph (knowledge.py): rebuilt, then opened in the browser
+    @objc func openGraph() {
+        background(L("Building the knowledge graph…")) {
+            let r = integrationsCall("prepare", script: "knowledge.py")
+            if let error = r["error"] as? String { return (L("No knowledge graph"), error) }
+            DispatchQueue.main.async { self.graphWindow.show(r["page"] as? String ?? "") }
+            return ("", "")  // the graph is in its window
+        }
+    }
+
+    /// A summary of the graph on the module's screen (knowledge.py module)
+    @objc func graphOnModule() {
+        background(L("Sending the graph to the module…")) {
+            let r = integrationsCall("module", script: "knowledge.py")
+            if let error = r["error"] as? String { return (L("Not on the module"), error) }
+            return ("", "")
         }
     }
 

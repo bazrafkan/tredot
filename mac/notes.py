@@ -18,6 +18,7 @@ from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import audio  # noqa: E402
+import knowledge  # noqa: E402
 from config import CACHE, CONFIG, NOTES, tool  # noqa: E402
 from hook import send, wrap  # noqa: E402
 from i18n import LANG, t, variants  # noqa: E402
@@ -52,6 +53,10 @@ Reply with the Markdown only, no preamble. Do not copy the transcription: I add 
 At the end, on a line of its own, write <!-- actions: yes --> if in the note I explicitly ask
 you (the assistant) to do something, for example "put it on the calendar" or "create an event";
 otherwise <!-- actions: no -->. Reminders to myself ("I have to call Anna") do not count.
+
+On one more line of its own list what the note talks about (people, projects, companies, places,
+recurring topics; at most 6, 1-3 words each, spelled the way you would in every note), like this:
+<!-- graph: Anna | Davide | Production -->
 
 Transcription:
 """.format(summary=SUMMARY, key_points=KEY_POINTS, to_do=TO_DO)
@@ -286,7 +291,9 @@ def main(wav):
     chosen = re.search(r"<!-- transcript: (\d+) -->", summary)
     number = int(chosen.group(1)) if chosen else 1
     text = candidates[number - 1][1] if 1 <= number <= len(candidates) else candidates[0][1]
-    summary = re.sub(r"\s*<!-- (actions|transcript): \w+ -->\s*", "\n", summary).strip()
+    graph = knowledge.LINE.search(summary)
+    summary = re.sub(r"\s*<!-- (actions|transcript): \w+ -->\s*", "\n", summary)
+    summary = knowledge.LINE.sub("", summary).strip()
 
     first = summary.splitlines()[0]
     title = first.lstrip("# ").strip() if first.startswith("#") else t("Voice note")
@@ -298,11 +305,18 @@ def main(wav):
     wav_name = os.path.basename(base) + ".wav"
     body = summary.splitlines()
     body[1:1] = ["", f"*{when} · {length} · [audio]({wav_name.replace(' ', '%20')})*"]
+    # the entities go last, after the transcript and the actions (and are what the graph reads)
     with open(base + ".md", "w", encoding="utf-8") as f:
         f.write("\n".join(body).rstrip() + f"\n\n## {TRANSCRIPT}\n\n" + text + "\n")
+        if graph:
+            f.write("\n" + graph.group(0).strip() + "\n")
 
     if wants_actions:
         with_actions(base + ".md", text)
+    try:
+        knowledge.build()  # the knowledge graph includes the new note
+    except Exception:
+        pass  # the graph is optional: the note is saved anyway
     show("saved", "", wrap(title, 22, 3))
 
 

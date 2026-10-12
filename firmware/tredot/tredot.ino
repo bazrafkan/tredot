@@ -10,6 +10,9 @@
 //     C <id>                  request closed elsewhere
 //     L <lines>               the agent's text as it appears (last lines), under "Thinking…"
 //     M <title> <lines>       agent reply, in pages: a tap turns the page
+//     G <title> <nodes> <edges> <names>   a graph: nodes "x,y,radius,kind" (screen pixels, kind 0 =
+//                             note, 1 = entity), edges "i,j" (indexes of nodes), the nodes' names.
+//                             Drag moves it, the buttons zoom and close, a tap on a node names it
 //     X photo <prompt>        the agent wants a photo: viewfinder with the prompt, a tap shoots
 //     X listen <question>     the agent wants a spoken answer: records until a tap
 //     W <protocol> <nonce> <lang>   the bridge connected over this link: it becomes the active
@@ -38,6 +41,7 @@
 //     P <base64>              JPEG photo
 //     MB / F <ms> <base64> / V <base64> / ME   video: start, JPEG frame with timestamp, audio
 //                             (as above), end
+//     GR                      the menu's Graph: the Mac answers with G
 //     T <x> <y>               raw touch, for diagnostics
 //     SS <width> <height> <base64>   screenshot: RGB565 pixels, little-endian, row by row
 //
@@ -45,8 +49,8 @@
 
 // The Mac checks PROTOCOL in the H greeting: bump it on any change to lines or fields that an
 // older bridge would not understand. FIRMWARE changes with every release.
-#define PROTOCOL 6
-#define FIRMWARE "1.2.0"
+#define PROTOCOL 8
+#define FIRMWARE "1.4.1"
 
 #define U8G2_USE_LARGE_FONTS
 #include <U8g2lib.h>  // without it, Arduino_GFX does not enable the Unifont fonts
@@ -102,13 +106,14 @@ const int CAM_D[8] = {15, 17, 18, 16, 14, 12, 11, 48};  // Y2..Y9
 #define C_ORANGE 0xDBAA  // #D97757
 #define C_GREEN  0x4DCC  // #4EBA65
 #define C_RED    0xE289  // #E5534B
+#define C_BLUE   0x5DDF  // #5CB8FF
 
 MirrorBus *bus = new MirrorBus(TFT_DC, TFT_CS, TFT_SCK, TFT_MOSI, TFT_MISO);  // keeps a copy: SS
 Arduino_GFX *gfx = new Arduino_GC9A01(bus, GFX_NOT_DEFINED, 0, true);
 
 
 enum Mode { M_IDLE, M_THINK, M_TOOL, M_DONE, M_WAIT, M_ASK, M_NOTE, M_SAVED, M_ERROR, M_REC,
-            M_MENU, M_PHOTO, M_VIDEO, M_REPLY };
+            M_MENU, M_PHOTO, M_VIDEO, M_REPLY, M_GRAPH };
 Mode mode = M_IDLE;
 String title, session;
 String lines[4];
@@ -143,14 +148,22 @@ volatile bool audioOn = false;
 bool camOk = false;
 uint8_t *preview, *crop;  // 320x240 decoded, 240x240 cropped for the screen
 
-const TextId MENU[] = {T_TALK_TO_CLAUDE, T_VOICE_NOTE, T_PHOTO, T_VIDEO, T_CLOSE};
-const int N_MENU = 5;
+const TextId MENU[] = {T_TALK_TO_CLAUDE, T_VOICE_NOTE, T_PHOTO, T_VIDEO, T_GRAPH, T_CLOSE};
+const int N_MENU = 6;
 
 // The agent: what it asked for (shown over viewfinder or recording) and its reply, in pages
 bool recForAgent = false;
 String prompt;
 const int MAX_REPLY = 40, PAGE = 7;
 String replyTitle, reply[MAX_REPLY];
+const int MAX_GNODES = 64, MAX_GEDGES = 96;
+struct GNode { uint8_t x, y, r, kind; };
+GNode gNodes[MAX_GNODES];
+uint8_t gEdges[MAX_GEDGES][2];
+String gNames[MAX_GNODES];
+int nGNodes = 0, nGEdges = 0, gSel = -1;
+float gZoom = 1, gPanX = 0, gPanY = 0;
+const int GV_TOP = 40, GV_BOT = 174;  // the part of the screen the graph moves in
 int nReply = 0, replyPage = 0;
 bool replyPending = false;  // arrived while the screen was busy
 int lastElapsed = -1;
@@ -257,6 +270,9 @@ void wake() {
 void sleepIfIdle() {
   if (asleep || ota.running || millis() - lastActivity < SLEEP_MS) return;
   if (mode == M_ASK || mode == M_REC || mode == M_PHOTO || mode == M_VIDEO) return;
+  // While the agent works (a long command sends no news for minutes) the screen stays on; the
+  // Mac clears a state nobody updates (STALE in bridge.py), and then it can sleep
+  if (mode == M_THINK || mode == M_TOOL || mode == M_WAIT || mode == M_NOTE) return;
   asleep = true;
   gfx->displayOff();
   pinMode(TFT_BL, OUTPUT);  // releases the PWM channel: the pin is driven low
@@ -266,8 +282,9 @@ void sleepIfIdle() {
 // ---------- the three dots (Tredot) ----------
 // In an arc as in the app icon. While the agent thinks each one wanders on its own (Lissajous
 // curves with different frequencies: they drift apart and come back together); during a tool they
-// light up in turn; in other states they stand still in the state's color. Only the three circles
-// are erased and redrawn, not a rectangle: no flicker.
+// light up in turn; in other states they stand still in the state's color. Each frame is drawn
+// off screen (antialiased, at sub-pixel positions) over the small area the dots move in and sent
+// to the panel in one write: erasing and redrawing on the panel itself showed as flicker.
 const float DOTS_ARC[3][2] = {{-0.68f, -0.2f}, {0, 0.32f}, {0.68f, -0.2f}};
 const int DOTS_U = 26;  // pixels per unit: the arc is ~36 px wide
 #define D_STILL 0       // still, in the given color
@@ -277,12 +294,30 @@ const int DOTS_U = 26;  // pixels per unit: the arc is ~36 px wide
 #define D_BLINK 4       // blinking: waiting for you
 int dotsStyle = D_LOGO, dotsY = 58;
 uint16_t dotsColor = C_TEXT;
-int dotX[3], dotY[3], dotR[3];
-bool dotsShown = false;  // false after render() clears the screen: nothing to erase
+const int DOTS_W = 56, DOTS_H = 44;  // the area the dots stay in, centered on x = 120 and dotsY
+uint16_t dotsBuf[DOTS_W * DOTS_H];
+
+// Filled circle with an antialiased edge, blended over the buffer's background.
+void dotsCircle(float cx, float cy, float r, uint16_t color) {
+  int x0 = max(0, (int)floorf(cx - r - 1)), x1 = min(DOTS_W - 1, (int)ceilf(cx + r + 1));
+  int y0 = max(0, (int)floorf(cy - r - 1)), y1 = min(DOTS_H - 1, (int)ceilf(cy + r + 1));
+  for (int y = y0; y <= y1; y++)
+    for (int x = x0; x <= x1; x++) {
+      float d = sqrtf((x + 0.5f - cx) * (x + 0.5f - cx) + (y + 0.5f - cy) * (y + 0.5f - cy));
+      float cover = r + 0.5f - d;
+      if (cover <= 0) continue;
+      int a = cover >= 1 ? 256 : (int)(cover * 256);
+      uint16_t bg = dotsBuf[y * DOTS_W + x];
+      int rr = (((bg >> 11) & 31) * (256 - a) + ((color >> 11) & 31) * a) >> 8;
+      int gg = (((bg >> 5) & 63) * (256 - a) + ((color >> 5) & 63) * a) >> 8;
+      int bb = ((bg & 31) * (256 - a) + (color & 31) * a) >> 8;
+      dotsBuf[y * DOTS_W + x] = (rr << 11) | (gg << 5) | bb;
+    }
+}
 
 void drawDots() {
   float t = millis() / 1000.0f;
-  int x[3], y[3], r[3];
+  float x[3], y[3], r[3];
   uint16_t c[3];
   for (int i = 0; i < 3; i++) {
     float fx = DOTS_ARC[i][0], fy = DOTS_ARC[i][1], fr = 0.2f;
@@ -300,17 +335,13 @@ void drawDots() {
     } else if (dotsStyle == D_BLINK) {
       c[i] = (millis() / 500) % 2 == 0 ? dotsColor : C_FAINT;  // like blinkOn(), defined below
     }
-    x[i] = 120 + (int)lroundf(fx * DOTS_U);
-    y[i] = dotsY + (int)lroundf(fy * DOTS_U);
-    r[i] = max(2, (int)lroundf(fr * DOTS_U));
+    x[i] = DOTS_W / 2 + fx * DOTS_U;
+    y[i] = DOTS_H / 2 + fy * DOTS_U;
+    r[i] = max(2.0f, fr * DOTS_U);
   }
-  if (dotsShown)
-    for (int i = 0; i < 3; i++) gfx->fillCircle(dotX[i], dotY[i], dotR[i] + 1, C_BG);
-  for (int i = 0; i < 3; i++) {
-    gfx->fillCircle(x[i], y[i], r[i], c[i]);
-    dotX[i] = x[i]; dotY[i] = y[i]; dotR[i] = r[i];
-  }
-  dotsShown = true;
+  for (int i = 0; i < DOTS_W * DOTS_H; i++) dotsBuf[i] = C_BG;
+  for (int i = 0; i < 3; i++) dotsCircle(x[i], y[i], r[i], c[i]);
+  gfx->draw16bitRGBBitmap(120 - DOTS_W / 2, dotsY - DOTS_H / 2, dotsBuf, DOTS_W, DOTS_H);
 }
 
 void dots(int style, int cy, uint16_t color = C_TEXT) {
@@ -375,7 +406,8 @@ bool canOpenMenu() {
 
 // Menu, note, photo, video and agent reply own the screen; agent states wait behind them
 bool localMode() {
-  return mode == M_MENU || mode == M_REC || mode == M_PHOTO || mode == M_VIDEO || mode == M_REPLY;
+  return mode == M_MENU || mode == M_REC || mode == M_PHOTO || mode == M_VIDEO || mode == M_REPLY ||
+         mode == M_GRAPH;
 }
 
 void drawMenuRow() {
@@ -411,11 +443,129 @@ void drawRecTime() {
   recPeak = recPeak * 2 / 3;
 }
 
+// ---------- the graph (G) ----------
+
+void leaveLocal();
+bool readTouch(int &x, int &y);
+void graphPoint(int i, float &x, float &y) {
+  x = 120 + (gNodes[i].x - 120) * gZoom + gPanX;
+  y = 108 + (gNodes[i].y - 108) * gZoom + gPanY;
+}
+
+// The part of the segment inside the graph's area (Liang-Barsky); false if none
+bool clipToGraph(float &x0, float &y0, float &x1, float &y1) {
+  float t0 = 0, t1 = 1, dx = x1 - x0, dy = y1 - y0;
+  float p[4] = {-dx, dx, -dy, dy};
+  float q[4] = {x0 - 0, 239 - x0, y0 - GV_TOP, GV_BOT - y0};
+  for (int i = 0; i < 4; i++) {
+    if (p[i] == 0) { if (q[i] < 0) return false; continue; }
+    float r = q[i] / p[i];
+    if (p[i] < 0) { if (r > t1) return false; if (r > t0) t0 = r; }
+    else { if (r < t0) return false; if (r < t1) t1 = r; }
+  }
+  x1 = x0 + t1 * dx; y1 = y0 + t1 * dy;
+  x0 = x0 + t0 * dx; y0 = y0 + t0 * dy;
+  return true;
+}
+
+// The selected node's name and the buttons: - x +
+void drawGraphFoot() {
+  gfx->fillRect(0, GV_BOT + 1, 240, 240 - GV_BOT - 1, C_BG);
+  if (gSel >= 0) drawLine(gNames[gSel], GV_BOT + 3, LINE_H, C_TEXT);
+  gfx->setTextColor(C_DIM);
+  gfx->setCursor(68, 222); gfx->print("-");
+  gfx->setCursor(116, 222); gfx->print("x");
+  gfx->setCursor(164, 222); gfx->print("+");
+}
+
+void drawGraph() {
+  gfx->fillRect(0, GV_TOP, 240, GV_BOT - GV_TOP + 1, C_BG);
+  for (int i = 0; i < nGEdges; i++) {
+    float x0, y0, x1, y1;
+    graphPoint(gEdges[i][0], x0, y0);
+    graphPoint(gEdges[i][1], x1, y1);
+    if (clipToGraph(x0, y0, x1, y1)) gfx->drawLine(x0, y0, x1, y1, C_DIM);
+  }
+  for (int i = 0; i < nGNodes; i++) {
+    float x, y;
+    graphPoint(i, x, y);
+    int r = max(2, (int)(gNodes[i].r * (0.6f + gZoom * 0.4f)));
+    if (x < -r || x > 239 + r || y - r < GV_TOP || y + r > GV_BOT) continue;
+    gfx->fillCircle(x, y, r, gNodes[i].kind ? C_ORANGE : C_BLUE);
+    if (i == gSel) gfx->drawCircle(x, y, r + 3, C_TEXT);
+  }
+  // The names, in a small font (5 px a letter) under their nodes
+  gfx->setFont(u8g2_font_5x8_tf);
+  for (int i = 0; i < nGNodes; i++) {
+    float x, y;
+    graphPoint(i, x, y);
+    int r = max(2, (int)(gNodes[i].r * (0.6f + gZoom * 0.4f)));
+    int base = y + r + 9;
+    if (x < 0 || x > 239 || y - r < GV_TOP || base > GV_BOT + 2) continue;
+    String name = gNames[i];
+    int n = 0, at = 0;
+    while (at < (int)name.length() && n < 14) { nextCodepoint(name, at); n++; }
+    name = name.substring(0, at);  // the first 14 letters, never half a letter
+    gfx->setTextColor(gNodes[i].kind ? C_TEXT : C_DIM);
+    gfx->setCursor(x - n * 5 / 2, base);
+    gfx->print(name);
+  }
+  gfx->setFont(u8g2_font_unifont_h_utf8);
+  drawGraphFoot();
+}
+
+// A tap: a button, or the node under the finger (the nearest within reach)
+void graphTap(int x, int y) {
+  if (y > GV_BOT + 20) {
+    if (x < 92) gZoom = max(0.5f, gZoom / 1.5f);
+    else if (x > 148) gZoom = min(5.0f, gZoom * 1.5f);
+    else { leaveLocal(); return; }
+    drawGraph();
+    return;
+  }
+  int best = -1;
+  float bestD = 22 * 22;
+  for (int i = 0; i < nGNodes; i++) {
+    float nx, ny;
+    graphPoint(i, nx, ny);
+    float d = (nx - x) * (nx - x) + (ny - y) * (ny - y);
+    if (d < bestD) { bestD = d; best = i; }
+  }
+  gSel = best == gSel ? -1 : best;
+  drawGraph();
+}
+
+// While the graph is shown the finger is followed, not just counted: dragging moves the graph
+void graphTouch() {
+  static bool down = false, moved = false;
+  static int startX, startY, lastX, lastY;
+  static uint32_t lastSeen = 0, lastDraw = 0;
+  int x, y;
+  if (readTouch(x, y)) {
+    lastSeen = millis();
+    lastActivity = millis();
+    if (!down) {
+      down = true; moved = false;
+      startX = lastX = x; startY = lastY = y;
+    } else if (startY >= GV_TOP && startY <= GV_BOT) {
+      if (!moved && (abs(x - startX) > 6 || abs(y - startY) > 6)) moved = true;
+      if (moved) {
+        gPanX += x - lastX; gPanY += y - lastY;
+        lastX = x; lastY = y;
+        if (millis() - lastDraw > 40) { drawGraph(); lastDraw = millis(); }
+      }
+    }
+  } else if (down && millis() - lastSeen > 150) {
+    down = false;
+    if (moved) drawGraph();
+    else if (millis() - modeSince > 300) graphTap(startX, startY);
+  }
+}
+
 void render() {
   gfx->fillScreen(C_BG);
   gfx->setTextSize(1);
   lastArcDeg = -1;
-  dotsShown = false;
   switch (mode) {
     case M_IDLE:
       backlight(255);
@@ -489,7 +639,7 @@ void render() {
       String labels[N_MENU];
       for (int i = 0; i < N_MENU; i++) labels[i] = tr(MENU[i]);
       drawLine(tr(T_WHAT_NOW), 28, LINE_H, C_DIM);
-      drawOptions(labels, N_MENU, 50, -1, 30);  // tall rows: easy to slip onto the next one
+      drawOptions(labels, N_MENU, 46, -1, 26);  // tall rows: easy to slip onto the next one
       break;
     }
     case M_REPLY: {
@@ -503,6 +653,11 @@ void render() {
       drawLine(foot, 184, LINE_H, C_DIM);
       break;
     }
+    case M_GRAPH:
+      backlight(255);
+      drawLine(replyTitle, 16, LINE_H, C_ORANGE);
+      drawGraph();
+      break;
     case M_PHOTO:
     case M_VIDEO:
       backlight(255);  // loop draws the viewfinder, frame by frame
@@ -572,7 +727,7 @@ void handleLine(const String &line) {
     if (f[0] == "A" && n >= 2) sendLine("R\t" + f[1] + "\t-1");
     return;
   }
-  if (f[0] == "S" || f[0] == "A" || f[0] == "M" || f[0] == "L") wake();  // news from the agent
+  if (f[0] == "S" || f[0] == "A" || f[0] == "M" || f[0] == "L" || f[0] == "G") wake();  // news from the agent
   if (f[0] == "S" && n >= 2) {
     if (mode == M_ASK) return;  // the request stays until answered or closed with C
     String s = f[1];
@@ -615,6 +770,31 @@ void handleLine(const String &line) {
     }
     if (mode != M_REPLY && mode != M_MENU) behind = mode;
     mode = M_REPLY;
+    render();
+  } else if (f[0] == "G" && n >= 4) {
+    if (mode == M_ASK || mode == M_REC || mode == M_PHOTO || mode == M_VIDEO) return;  // busy
+    static String items[MAX_GEDGES];
+    int count = splitList(f[2], items, MAX_GNODES);
+    nGNodes = 0;
+    for (int i = 0; i < count; i++) {
+      int x, y, r, k;
+      if (sscanf(items[i].c_str(), "%d,%d,%d,%d", &x, &y, &r, &k) == 4)
+        gNodes[nGNodes++] = {(uint8_t)constrain(x, 0, 239), (uint8_t)constrain(y, 0, 239),
+                             (uint8_t)constrain(r, 1, 12), (uint8_t)(k ? 1 : 0)};
+    }
+    count = splitList(f[3], items, MAX_GEDGES);
+    nGEdges = 0;
+    for (int i = 0; i < count; i++) {
+      int a, b;
+      if (sscanf(items[i].c_str(), "%d,%d", &a, &b) == 2 && a >= 0 && b >= 0 && a < nGNodes && b < nGNodes)
+        { gEdges[nGEdges][0] = a; gEdges[nGEdges][1] = b; nGEdges++; }
+    }
+    count = splitList(n > 4 ? f[4] : "", gNames, MAX_GNODES);
+    for (int i = count; i < nGNodes; i++) gNames[i] = "";
+    gZoom = 1; gPanX = gPanY = 0; gSel = -1;
+    replyTitle = f[1];
+    if (mode != M_REPLY && mode != M_MENU && mode != M_GRAPH) behind = mode;
+    mode = M_GRAPH;
     render();
   } else if (f[0] == "X" && n >= 2) {
     bool busy = mode == M_ASK || mode == M_REC || mode == M_PHOTO || mode == M_VIDEO;
@@ -1336,7 +1516,8 @@ void onMenuTap(int y) {
   else if (hit == 1 && micOk) startRecording(false);
   else if (hit == 2) startCamera(M_PHOTO);
   else if (hit == 3) startCamera(M_VIDEO);
-  else if (hit == 4) leaveLocal();
+  else if (hit == 4) { sendLine("GR"); leaveLocal(); }  // the Mac answers with G
+  else if (hit == 5) leaveLocal();
 }
 
 void pollTouch() {
@@ -1344,6 +1525,7 @@ void pollTouch() {
   // 150 ms without readings.
   static uint32_t lastSeen = 0;
   int x, y;
+  if (mode == M_GRAPH && !asleep) return graphTouch();
   bool now = readTouch(x, y);
   bool fresh = now && millis() - lastSeen > 150;
   if (now) {
@@ -1444,8 +1626,8 @@ void loop() {
   if (mode == M_REC && millis() - recStart > REC_MAX_MS) stopRecording();
   if (mode == M_PHOTO || mode == M_VIDEO) cameraLoop();
 
-  static uint32_t lastDots = 0;  // the dots: ~30 frames a second, only the three circles
-  if (dotsMoving() && millis() - lastDots >= 33) {
+  static uint32_t lastDots = 0;  // the dots: ~60 frames a second, only their small area
+  if (dotsMoving() && millis() - lastDots >= 16) {
     lastDots = millis();
     drawDots();
   }

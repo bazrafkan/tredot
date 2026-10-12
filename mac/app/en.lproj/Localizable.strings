@@ -3,7 +3,6 @@
    the right-hand side, and add <lang> to CFBundleLocalizations in build_app.py. */
 
 "The app's Python was not found" = "The app's Python was not found";
-"integrations.py did not respond" = "integrations.py did not respond";
 "cable" = "cable";
 "OK" = "OK";
 "Cancel" = "Cancel";
@@ -102,3 +101,10 @@
 "Almost done" = "Almost done";
 "Connecting Gemini CLI…" = "Connecting Gemini CLI…";
 "Gemini CLI connected" = "Gemini CLI connected";
+"Open Knowledge Graph" = "Open Knowledge Graph";
+"Building the knowledge graph…" = "Building the knowledge graph…";
+"No knowledge graph" = "No knowledge graph";
+"%@ did not respond" = "%@ did not respond";
+"Show Graph on the Module" = "Show Graph on the Module";
+"Sending the graph to the module…" = "Sending the graph to the module…";
+"Not on the module" = "Not on the module";

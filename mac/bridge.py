@@ -13,6 +13,8 @@ For the agent (agent.py) there are also:
   {"op": "subscribe"}                 kept open: the bridge pushes {"event": "talk", "wav": ...}
                                       (to the latest subscriber; if it leaves, to the previous one)
   {"op": "show", "title": ..., "text": ...}       a paged reply on the screen
+  {"op": "graph", "title": ..., "nodes": [[x, y, r, kind]], "edges": [[i, j]], "names": [...], "text": ...}
+                                      a graph drawn on the screen (text: for firmware without it)
   {"op": "photo", "prompt": ...}      -> {"path": <jpg> | null}   a photo framed by the user
   {"op": "listen", "prompt": ...}     -> {"path": <wav> | null}   a spoken answer
 
@@ -54,7 +56,7 @@ LOG = os.path.join(CACHE, "bridge.log")
 # 5: firmware update from the bridge (U, u, UE, UA; the module answers UK, UD, UN).
 # W also carries the UI language (en, it) as its last field: firmware that does not know it
 # ignores it.
-PROTOCOL = 6
+PROTOCOL = 8
 RESYNC = 3  # encrypted frames rejected in a row before reopening the session (received)
 # The Mac-side version: inside the app build_app.py writes it to the "VERSION" file, in the source
 # tree it comes from pyproject.toml. The app compares it with its own: a bridge from an older
@@ -388,6 +390,11 @@ class Device:
         elif parts[0] == "XN":  # the module was busy: the agent gets no photo or voice
             for kind in ("photo", "listen"):
                 self.resolve(kind, None)
+        elif parts[0] == "GR":  # "Graph" in the module's menu: knowledge.py sends it back (op graph)
+            subprocess.Popen([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                                           "knowledge.py"), "module"],
+                             start_new_session=True, stdin=subprocess.DEVNULL,
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         elif parts[0] == "VE":
             self.end_note()
         elif parts[0] == "K":
@@ -657,6 +664,17 @@ class Device:
             lines += wrap(plain(para), 21, 999) if para.strip() else ([""] if lines else [])
         self.write("\t".join(["M", clean(title, 30), clean_list(lines[:40], 40)]))
 
+    def show_graph(self, msg):
+        """A graph on the screen; the older firmware (protocol < 7) gets the text instead."""
+        if int(self.info.get("protocol", 0)) < 7:
+            self.show_reply(msg.get("title") or "Graph", msg.get("text"))
+            return
+        nodes = ["%d,%d,%d,%d" % tuple(int(v) for v in n[:4]) for n in msg.get("nodes", [])[:64]]
+        edges = ["%d,%d" % (int(a), int(b)) for a, b in msg.get("edges", [])[:96]]
+        names = [clean(n, 24) for n in msg.get("names", [])[:64]]
+        self.write("\t".join(["G", clean(msg.get("title") or "Graph", 30), "\x1f".join(nodes),
+                              "\x1f".join(edges), "\x1f".join(names)]))
+
     def save_photo(self, jpeg):
         os.makedirs(MEDIA, exist_ok=True)
         path = os.path.join(MEDIA, datetime.now().strftime("%Y-%m-%d %H%M%S") + ".jpg")
@@ -845,6 +863,9 @@ class Handler(socketserver.StreamRequestHandler):
             self.reply({"ok": True})
         elif msg.get("op") == "show":
             device.show_reply(msg.get("title") or "Claude", msg.get("text"))
+            self.reply({"ok": True})
+        elif msg.get("op") == "graph":
+            device.show_graph(msg)
             self.reply({"ok": True})
         elif msg.get("op") in ("photo", "listen"):
             kind = msg["op"]

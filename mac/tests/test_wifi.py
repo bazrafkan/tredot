@@ -83,7 +83,7 @@ class WifiTest(unittest.TestCase):
         self.conn.settimeout(5)
         self.splitter, self.queue = security.Splitter(), []
         second = self.next()
-        self.assertTrue(first.startswith("W\t6\t") and second.startswith("W\t6\t"))
+        self.assertTrue(first.startswith("W\t8\t") and second.startswith("W\t8\t"))
         self.assertTrue(first.endswith("\ten") and second.endswith("\ten"))  # the language
         self.assertNotEqual(first, second)  # a new nonce: a new session
 

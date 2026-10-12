@@ -120,6 +120,15 @@ IT = {
     "Gemini CLI is not installed on this Mac": "Gemini CLI non è installato su questo Mac",
     "Tredot is in Gemini CLI, with its state on the screen. New sessions get it.":
         "Tredot è in Gemini CLI, con lo stato sullo schermo. Vale per le sessioni nuove.",
+    # the knowledge graph page (knowledge.py)
+    "Knowledge graph": "Grafo delle note",
+    "Graph": "Grafo",
+    "No notes yet": "Ancora nessuna nota",
+    "Click a note to read it; drag to move; scroll to zoom":
+        "Clicca una nota per leggerla; trascina per spostare; scorri per ingrandire",
+    "Open the note": "Apri la nota",
+    "{count} nodes": "{count} nodi",
+    "{notes} notes, {topics} topics": "{notes} note, {topics} temi",
 }
 
 TABLES = {"en": {}, "it": IT}

@@ -118,7 +118,7 @@ class BridgeTest(unittest.TestCase):
         # once connected the bridge introduces itself (W: protocol, nonce, language) and sends
         # the current state
         greeting = self.module.read().split("\t")
-        self.assertEqual((greeting[:2], len(greeting), greeting[3]), (["W", "6"], 4, "en"))
+        self.assertEqual((greeting[:2], len(greeting), greeting[3]), (["W", "8"], 4, "en"))
         self.assertEqual(self.module.expect("S")[:2], ["S", "idle"])
 
     def cleanup(self):
@@ -330,7 +330,7 @@ class BridgeTest(unittest.TestCase):
         return key
 
     def open_session(self, key, device="XIAO-TEST"):
-        greeting = self.module.expect("W\t6\t")
+        greeting = self.module.expect("W\t8\t")
         device_nonce = security.new_nonce()
         self.module.send("H", "4", "0.5.0", "ok", device, security.b64(device_nonce))
         self.module.session = security.Session(key, base64.b64decode(greeting[2]), device_nonce,
@@ -437,7 +437,7 @@ class BridgeTest(unittest.TestCase):
             self.module.session = security.Session(other, b"x" * 16, b"y" * 16, side="device")
             for _ in range(3):
                 self.module.send("I", "wifi", "off")
-            greeting = self.module.expect("W\t6\t")
+            greeting = self.module.expect("W\t8\t")
             nonce = security.new_nonce()
             self.module.send("H", "4", "0.5.0", "ok", "XIAO-TEST", security.b64(nonce))
             self.module.session = security.Session(other, base64.b64decode(greeting[2]), nonce, side="device")
