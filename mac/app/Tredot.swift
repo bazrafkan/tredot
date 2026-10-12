@@ -79,6 +79,8 @@ func integrationsCall(_ action: String, script: String = "integrations.py") -> [
 final class GraphWindow: NSObject, WKNavigationDelegate {
     var window: NSWindow?
     let web = WKWebView(frame: .zero)
+    let refreshButton = NSButton()
+    var page = ""
 
     func show(_ page: String) {
         if window == nil {
@@ -90,12 +92,36 @@ final class GraphWindow: NSObject, WKNavigationDelegate {
             w.contentView = web
             w.center()
             web.navigationDelegate = self
+            // a refresh button in the title bar: rebuilds the graph from the notes
+            refreshButton.image = NSImage(systemSymbolName: "arrow.clockwise", accessibilityDescription: L("Refresh"))
+            refreshButton.bezelStyle = .texturedRounded
+            refreshButton.toolTip = L("Refresh")
+            refreshButton.target = self
+            refreshButton.action = #selector(refresh)
+            refreshButton.frame = NSRect(x: 0, y: 0, width: 44, height: 28)  // an accessory needs a size
+            let bar = NSTitlebarAccessoryViewController()
+            bar.view = refreshButton
+            bar.layoutAttribute = .right
+            w.addTitlebarAccessoryViewController(bar)
             window = w
         }
+        self.page = page
         let url = URL(fileURLWithPath: page)
         web.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent())
         NSApp.activate(ignoringOtherApps: true)
         window?.makeKeyAndOrderFront(nil)
+    }
+
+    @objc func refresh() {
+        refreshButton.isEnabled = false
+        DispatchQueue.global().async {
+            let r = integrationsCall("prepare", script: "knowledge.py")
+            DispatchQueue.main.async {
+                self.refreshButton.isEnabled = true
+                if let error = r["error"] as? String { _ = alert(L("No knowledge graph"), error); return }
+                self.web.reload()
+            }
+        }
     }
 
     func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
