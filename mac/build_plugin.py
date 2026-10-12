@@ -22,8 +22,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 PLUGIN = os.path.join(ROOT, "plugin")
 # what they need, nothing more
-SCRIPTS = ["hook.py", "mcp_server.py", "module.py", "config.py", "i18n.py"]
-VERSION = "1.1.0"
+SCRIPTS = ["hook.py", "mcp_server.py", "module.py", "config.py", "i18n.py", "knowledge.py"]
+VERSION = "1.2.2"
 
 MANIFEST = {
     "name": "tredot",

@@ -127,6 +127,14 @@ IT = {
     "Click a note to read it; drag to move; scroll to zoom":
         "Clicca una nota per leggerla; trascina per spostare; scorri per ingrandire",
     "Open the note": "Apri la nota",
+    "Search…": "Cerca…",
+    "No results": "Nessun risultato",
+    "All time": "Sempre",
+    "Last 7 days": "Ultimi 7 giorni",
+    "Last 30 days": "Ultimi 30 giorni",
+    "Last 90 days": "Ultimi 90 giorni",
+    "Notes": "Note",
+    "Related": "Collegati",
     "{count} nodes": "{count} nodi",
     "{notes} notes, {topics} topics": "{notes} note, {topics} temi",
 }

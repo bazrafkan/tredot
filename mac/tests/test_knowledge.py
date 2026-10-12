@@ -66,6 +66,18 @@ class GraphTest(unittest.TestCase):
         for x, y, r, kind in nodes:
             self.assertLessEqual(((x - 120) ** 2 + (y - 108) ** 2) ** 0.5 + r, 63)
 
+    def test_lookup_for_a_conversation(self):
+        self.write("2026-10-07 1230 A.md", "Call Davide", "<!-- graph: Davide | Production -->")
+        self.write("2026-10-08 0900 B.md", "Other", "<!-- graph: Anna -->")
+        overview = knowledge.lookup()
+        self.assertIn("2 voice notes", overview)
+        self.assertIn("Davide (1)", overview)
+        about = knowledge.lookup("anna")
+        self.assertIn("Other", about)
+        self.assertNotIn("Call Davide", about)
+        self.assertIn("1 notes about", about)
+        self.assertIn("No notes about", knowledge.lookup("zzz"))
+
     def test_page_is_one_file_with_the_data(self):
         self.write("2026-10-07 1230 A.md", "A </script>", "<!-- graph: Anna -->")
         knowledge.build()

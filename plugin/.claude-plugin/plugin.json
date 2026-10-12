@@ -1,6 +1,6 @@
 {
   "name": "tredot",
-  "version": "1.1.0",
+  "version": "1.2.2",
   "description": "Tredot for Claude Code: see what Claude is doing on a small round screen, approve its actions with a tap, answer by voice, show it photos.",
   "author": {
     "name": "tredot"

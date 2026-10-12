@@ -76,6 +76,16 @@ TOOLS = [
                     "e.g. 'Show me the plant').",
      "inputSchema": {"type": "object", "properties": {"instruction": {"type": "string"}},
                      "required": ["instruction"]}},
+    {"name": "search_voice_notes",
+     "description": "Search the user's own Tredot voice notes. ALWAYS use this when the user asks what "
+                    "they said, noted, recorded or decided about something, in any language "
+                    "(\"what did I say about the garden?\", \"cosa ho detto sul giardino?\"): the answer "
+                    "is in their notes, not in your memory. Searches the user's voice notes through their knowledge graph (the notes and the "
+                    "people, projects, places and topics they mention). Without 'about': an overview "
+                    "(most mentioned things, latest notes). With 'about' (a name, a project, a word): "
+                    "the notes about it, with their summaries and file paths, and what is related. "
+                    "Use it when the user asks what they said or noted about something.",
+     "inputSchema": {"type": "object", "properties": {"about": {"type": "string"}}}},
     {"name": "status",
      "description": "The real status of the desk module, read from the module itself: firmware "
                     "and protocol version, how it is connected (Wi-Fi, USB cable, Bluetooth) and "
@@ -88,7 +98,10 @@ INSTRUCTIONS_TOOLS = (
     "These tools act on Tredot, the user's desk module: a small round touch screen with a "
     "microphone and a camera, next to the keyboard. Use approve before consequential actions (the user confirms "
     "with a tap, away from the computer); ask for quick choices, listen for a spoken answer, "
-    "photo to see something, show for a short notice. Keep texts short: the screen is small."
+    "photo to see something, show for a short notice. Keep texts short: the screen is small. "
+    "Separately, search_voice_notes searches the user's own Tredot voice notes (their knowledge graph): use it "
+    "whenever they ask what they said, noted or recorded about something (a person, a project, "
+    "a topic), before answering from memory."
 )
 INSTRUCTIONS_CHANNEL = (
     "The user talks to you from Tredot, their desk module: each sentence arrives as "
@@ -140,6 +153,9 @@ def run_tool(name, args):
         path, data = shot
         return text(f"Photo saved to {path}") + [
             {"type": "image", "data": data, "mimeType": "image/jpeg"}]
+    if name == "search_voice_notes":
+        import knowledge
+        return text(knowledge.lookup(args.get("about", "")))
     if name == "status":
         return text(module.describe())
     raise ValueError(f"unknown tool: {name}")

@@ -76,9 +76,14 @@ func integrationsCall(_ action: String, script: String = "integrations.py") -> [
 
 /// The knowledge graph's page (knowledge.py) in a window of the app, not in the browser. A click on
 /// a note opens its file; the page itself stays where it is.
-final class GraphWindow: NSObject, WKNavigationDelegate {
+final class GraphWindow: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
     var window: NSWindow?
-    let web = WKWebView(frame: .zero)
+    // the page tells the app which note to open ("open" message): more reliable than a navigation
+    lazy var web: WKWebView = {
+        let config = WKWebViewConfiguration()
+        config.userContentController.add(self, name: "open")
+        return WKWebView(frame: .zero, configuration: config)
+    }()
     let refreshButton = NSButton()
     var page = ""
 
@@ -112,6 +117,20 @@ final class GraphWindow: NSObject, WKNavigationDelegate {
         window?.makeKeyAndOrderFront(nil)
     }
 
+    func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+        if let text = message.body as? String, let url = URL(string: text), url.isFileURL { open(url) }
+    }
+
+    /// A note (.md) opens in its app; a Mac with none for Markdown gets TextEdit, not silence
+    func open(_ url: URL) {
+        if url.isFileURL, NSWorkspace.shared.urlForApplication(toOpen: url) == nil {
+            let edit = URL(fileURLWithPath: "/System/Applications/TextEdit.app")
+            NSWorkspace.shared.open([url], withApplicationAt: edit, configuration: NSWorkspace.OpenConfiguration())
+        } else {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
     @objc func refresh() {
         refreshButton.isEnabled = false
         DispatchQueue.global().async {
@@ -126,8 +145,9 @@ final class GraphWindow: NSObject, WKNavigationDelegate {
 
     func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
                  decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-        if action.navigationType == .linkActivated, let url = action.request.url {
-            NSWorkspace.shared.open(url)
+        if let url = action.request.url,
+           action.navigationType == .linkActivated || (url.isFileURL && url.path != page) {
+            open(url)
             decisionHandler(.cancel)
         } else {
             decisionHandler(.allow)

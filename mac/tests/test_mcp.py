@@ -35,7 +35,7 @@ class McpTest(unittest.TestCase):
         self.assertEqual(replies[1]["result"]["serverInfo"]["name"], "tredot")
         self.assertIn("tools", replies[1]["result"]["capabilities"])
         names = [t["name"] for t in replies[2]["result"]["tools"]]
-        self.assertEqual(names, ["approve", "ask", "show", "listen", "photo", "status"])
+        self.assertEqual(names, ["approve", "ask", "show", "listen", "photo", "search_voice_notes", "status"])
 
     def test_tools_accept_the_client_version(self):
         replies = session(init("2026-07-28"))
